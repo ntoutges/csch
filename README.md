@@ -42,9 +42,9 @@ void task1 () { /* ... */ }
 void task2 () { /* ... */ }
 void task3 () { /* ... */ }
 
-csch_task_fork(&csch, task1);
-csch_task_fork(&csch, task2);
-csch_task_fork(&csch, task3);
+csch_task_fork(&sched, task1);
+csch_task_fork(&sched, task2);
+csch_task_fork(&sched, task3);
 ```
 
 _Uses the `fork` function schedule an initial call the associated task function_
@@ -54,7 +54,7 @@ _Uses the `fork` function schedule an initial call the associated task function_
 Give control of the processor to the scheduler.
 
 ```C
-while (1) { csch_tick(&csch, millis()); }
+while (1) { csch_tick(&sched, millis()); }
 ```
 
 _Continuously runs the scheduler, and all required queued functions_
