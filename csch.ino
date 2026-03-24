@@ -14,9 +14,9 @@ void setup() {
   csch_create(&sched, 10, sched_buf, sizeof(sched_buf) / sizeof(*sched_buf));
   
   // Initialize all tasks
-  csch_task_fork(&sched, task1);
-  csch_task_fork(&sched, task2);
-  csch_task_fork(&sched, task3);
+  csch_task_fork(&sched, 1, task1);
+  csch_task_fork(&sched, 1, task2);
+  csch_task_fork(&sched, 1, task3);
 
   // Run scheduler
   while(1) {
