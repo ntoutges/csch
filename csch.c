@@ -1,6 +1,6 @@
 #include "csch.h"
 
-bool _csch_valid(csch_t* csch, uint16_t pid); // Check if some csch+pid combination is valid
+bool _csch_valid(csch_t* csch, uint8_t pid); // Check if some csch+pid combination is valid
 void _csch_task_qupdate(csch_t* csch, uint8_t pid); // Update task position within queue
 uint8_t _csch_task_qnext(csch_t* csch); // Get id of next task to run
 void _csch_rebase(csch_t* csch); // Rebase all task `tk_sleep` timers s.t. (csch->tk_timer = 0) to avoid overflows
@@ -116,7 +116,7 @@ void csch_tick(csch_t* csch, uint32_t ms) {
   }
 }
 
-bool csch_sleep(csch_t* csch, uint16_t pid, uint16_t ticks) {
+bool csch_sleep(csch_t* csch, uint8_t pid, uint16_t ticks) {
   if (!_csch_valid(csch, pid)) return false; // Ensure process is valid + active
 
   // Clamp to a minimum of 1tk
@@ -138,7 +138,7 @@ bool csch_csleep(uint16_t ticks) {
   return csch_sleep(_csch_active_scheduler, _csch_active_pid, ticks);
 }
 
-bool csch_hibernate(csch_t* csch, uint16_t pid) {
+bool csch_hibernate(csch_t* csch, uint8_t pid) {
   if (!_csch_valid(csch, pid)) return false; // Ensure process is valid + active
 
   // Mark as hibernated
@@ -159,7 +159,7 @@ uint16_t csch_cms_to_ticks(uint16_t ms) {
   return csch_ms_to_ticks(_csch_active_scheduler, ms);
 }
 
-bool _csch_valid(csch_t* csch, uint16_t pid) {
+bool _csch_valid(csch_t* csch, uint8_t pid) {
   return csch != nullptr && pid < csch->proc_cap && csch->proc_buf[pid].data.occupied;
 }
 

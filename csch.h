@@ -77,7 +77,7 @@ void csch_tick(csch_t* csch, uint32_t ms);
  * @param ticks The length of time to sleep the task for
  * @returns `true` if the task could be found and put to sleep; False otherwise
  */
-bool csch_sleep(csch_t* csch, uint16_t pid, uint16_t ticks);
+bool csch_sleep(csch_t* csch, uint8_t pid, uint16_t ticks);
 
 /**
  * Put the current running process to sleep. Note: Minimum sleep time is 1tk to prevent infinite blocking loops
@@ -92,7 +92,7 @@ bool csch_csleep(uint16_t ticks);
  * @param pid   The process to hibernate
  * @returns `true` if the task could be found and hiberated; False otherwise
  */
-bool csch_hibernate(csch_t* csch, uint16_t pid);
+bool csch_hibernate(csch_t* csch, uint8_t pid);
 
 /**
  * Put the current process to sleep for an infinite time
