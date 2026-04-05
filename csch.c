@@ -3,13 +3,13 @@
 bool _csch_valid(csch_t* csch, uint8_t pid); // Check if some csch+pid combination is valid
 void _csch_task_qupdate(csch_t* csch, uint8_t pid); // Update task position within queue
 uint8_t _csch_task_qnext(csch_t* csch); // Get id of next task to run
-void _csch_rebase(csch_t* csch); // Rebase all task `tk_sleep` timers s.t. (csch->tk_timer = 0) to avoid overflows
+void _csch_rebase(csch_t* csch); // Rebase all task `tk_queue` timers s.t. (csch->tk_timer = 0) to avoid overflows
 
 // Store current running scheduler/process info
 csch_t* _csch_active_scheduler = nullptr;
 uint8_t _csch_active_pid = 0xFF;
 
-void csch_create(csch_t* csch, uint8_t ms_tk, csch_proc_t* buf, uint8_t cap) {
+void csch_create(csch_t* csch, uint8_t ms_tk, void (*curr_time)(), csch_proc_t* buf, uint8_t cap) {
 
   // Initialize csch
   csch->proc_buf = buf;
@@ -19,6 +19,7 @@ void csch_create(csch_t* csch, uint8_t ms_tk, csch_proc_t* buf, uint8_t cap) {
   csch->ms_tk = ms_tk;
   csch->ms_acc = 0; // Run initial tick immediately
   csch->ms_last = 0;
+  csch->curr_time = curr_time;
 
   // Initialize buf
   for (uint8_t i = 0; i < cap; i++) {
@@ -38,10 +39,12 @@ uint8_t csch_task_fork(csch_t* csch, void (*task)()) {
   // Initialize slot for process
   csch_proc_t* p = &(csch->proc_buf[pid]);
   p->data.occupied = 1;
+  p->data.queue_inh = 0;
+  p->data.asleep = 0;
   p->task = task;
 
   // Run immediately
-  p->tk_sleep = csch->tk_timer;
+  p->tk_queue = csch->tk_timer;
 
   // Place process into start of process queue
   if (csch->proc_start != 0xFF)
@@ -72,18 +75,20 @@ bool csch_task_kill(csch_t* csch, uint8_t pid) {
   return true;
 }
 
-void csch_tick(csch_t* csch, uint32_t ms) {
+uint16_t csch_tick(csch_t* csch) {
+  uint32_t ms = csch->curr_time();
+
   uint16_t delta = ms - csch->ms_last;
   uint16_t d_tk = delta / csch->ms_tk;
   uint8_t d_ms = delta % csch->ms_tk;
 
   // Update accumulator + tick count
-  csch->tk_timer += d_tk;
   if (d_ms >= csch->ms_acc) {
     csch->ms_acc += csch->ms_tk - d_ms;
-    csch->tk_timer++;
+    d_tk++;
   }
   else csch->ms_acc -= d_ms;
+  csch->tk_timer += d_tk;
   csch->ms_last = ms;
 
   // Rebase if over half the timer capacity taken up
@@ -99,10 +104,10 @@ void csch_tick(csch_t* csch, uint32_t ms) {
     csch_proc_t* p = &(csch->proc_buf[_csch_active_pid]);
 
     // Reached end of tasks to run; Ignore!
-    if (p->tk_sleep > csch->tk_timer) break;
+    if (p->tk_queue > csch->tk_timer) break;
     
     // Hibernate task by default
-    p->tk_sleep = 0xFFFF;
+    p->tk_queue = 0xFFFF;
 
     // Run task
     p->data.queue_inh = 1;
@@ -114,9 +119,39 @@ void csch_tick(csch_t* csch, uint32_t ms) {
 
     _csch_active_pid = _csch_task_qnext(csch);
   }
+
+  _csch_active_scheduler = nullptr;
+
+  return d_tk;
 }
 
-bool csch_sleep(csch_t* csch, uint8_t pid, uint16_t ticks) {
+bool csch_ctick() {
+  if (!_csch_valid(_csch_active_scheduler, _csch_active_pid)) return false; // Ensure process is valid + active
+
+  // Check if any task is currently already asleep
+  // Asleep iff the next task to run (-> next) is asleep; All other flags ignored
+  csch_proc_t* proc = &(_csch_active_scheduler->proc_buf[_csch_active_pid]);
+  if (proc->data.asleep == 1) return false;
+
+  // Mark current process as asleep
+  // Prevents further `ctick` calls, and makes all other scheduling ignore this task
+  proc->data.asleep = 1;
+
+  // Run the tick, restoring any required state
+  csch_t* scheduler = _csch_active_scheduler;
+  uint8_t active_pid = _csch_active_pid;
+  csch_tick(_csch_active_scheduler);
+  _csch_active_scheduler = scheduler;
+  _csch_active_pid = active_pid;
+
+  // Mark this task as no longer asleep, allowing new sleep calls
+  proc->data.asleep = 0;
+
+  // Success!
+  return true;
+}
+
+bool csch_queue(csch_t* csch, uint8_t pid, uint16_t ticks) {
   if (!_csch_valid(csch, pid)) return false; // Ensure process is valid + active
 
   // Clamp to a minimum of 1tk
@@ -125,7 +160,7 @@ bool csch_sleep(csch_t* csch, uint8_t pid, uint16_t ticks) {
   csch_proc_t* p = &(csch->proc_buf[pid]);
 
   // Update sleep timer
-  p->tk_sleep = csch->tk_timer + ticks;
+  p->tk_queue = csch->tk_timer + ticks;
 
   // Update location in task queue, if required
   if (!p->data.queue_inh)
@@ -134,15 +169,49 @@ bool csch_sleep(csch_t* csch, uint8_t pid, uint16_t ticks) {
   return true;
 }
 
+bool csch_cqueue(uint16_t ticks) {
+  return csch_queue(_csch_active_scheduler, _csch_active_pid, ticks);
+}
+
 bool csch_csleep(uint16_t ticks) {
-  return csch_sleep(_csch_active_scheduler, _csch_active_pid, ticks);
+  if (!_csch_valid(_csch_active_scheduler, _csch_active_pid)) return false; // Ensure process is valid + active
+
+  // Check if any task is currently already asleep
+  // Asleep iff the next task to run (-> next) is asleep; All other flags ignored
+  csch_proc_t* proc = &(_csch_active_scheduler->proc_buf[_csch_active_pid]);
+  if (proc->data.asleep == 1) return false;
+
+  // Mark current process as asleep
+  // Prevents further `sleep` calls, and makes all other scheduling ignore this task
+  proc->data.asleep = 1;
+
+  // Run `ticks` ticks
+  csch_t* scheduler = _csch_active_scheduler;
+  uint8_t pid = _csch_active_pid;
+  while (ticks != 0) {
+    uint16_t delta = csch_tick(scheduler);
+
+    // Evaluated at least `ticks` ticks
+    if (delta >= ticks) break;
+    ticks -= delta;
+  }
+
+  // Restore the state
+  _csch_active_scheduler = scheduler;
+  _csch_active_pid = pid;
+
+  // Mark this task as no longer asleep, allowing new sleep calls
+  proc->data.asleep = 0;
+
+  // Success!
+  return true;
 }
 
 bool csch_hibernate(csch_t* csch, uint8_t pid) {
   if (!_csch_valid(csch, pid)) return false; // Ensure process is valid + active
 
   // Mark as hibernated
-  csch->proc_buf[pid].tk_sleep = 0xFFFF;
+  csch->proc_buf[pid].tk_queue = 0xFFFF;
 }
 
 bool csch_chibernate() {
@@ -167,7 +236,7 @@ void _csch_task_qupdate(csch_t* csch, uint8_t pid) {
   csch_proc_t* buf = csch->proc_buf;
 
   csch_proc_t* p = &(buf[pid]);
-  uint16_t timer = p->tk_sleep;
+  uint16_t timer = p->tk_queue;
 
   // Remove `pid` from chain
   // Update previous/next pointers
@@ -183,9 +252,12 @@ void _csch_task_qupdate(csch_t* csch, uint8_t pid) {
 
   // Climb ladder to the proper slot to insert the process
   // Round robin consideration: Newer tasks are placed further back
+  // Note that this explicitly ignore sleeping tasks
   while (
-    curr != 0xFF &&
-    timer >= buf[curr].tk_sleep
+    curr != 0xFF && (
+      timer >= buf[curr].tk_queue ||
+      buf[curr].data.asleep
+    )
   ) {
     prev = curr;
     curr = buf[curr].next;
@@ -211,23 +283,29 @@ void _csch_task_qupdate(csch_t* csch, uint8_t pid) {
 
 uint8_t _csch_task_qnext(csch_t* csch) {
   if (csch->proc_start == 0xFF) return 0xFF; // No new processes to run
+
+  // Ignore current task iff asleep
+  csch_proc_t* proc = &csch->proc_buf[csch->proc_start];
+  if (proc->data.asleep) return proc->next;
+
+  // Default: Return the first process
   return csch->proc_start;
 }
 
 void _csch_rebase(csch_t* csch) {
   // Subtract `csch->tk_timer` from all sleep timers
-  // Assumes all tk_sleep >= tk_timer;
+  // Assumes all tk_queue >= tk_timer;
 
   for (uint8_t i = 0; i < csch->proc_cap; i++) {
     csch_proc_t* proc = &(csch->proc_buf[i]);
     if (
       !proc->data.occupied ||  // No task in this slot; Ignore
-      proc->tk_sleep == 0xFFFF // Task is inactive; Ignore
+      proc->tk_queue == 0xFFFF // Task is inactive; Ignore
     ) {
       continue; 
     }
 
-    proc->tk_sleep -= csch->tk_timer;
+    proc->tk_queue -= csch->tk_timer;
   }
 
   csch->tk_timer = 0;

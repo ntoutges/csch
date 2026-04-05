@@ -18,11 +18,12 @@ typedef struct {
   struct {
     uint8_t occupied: 1; // Whether this task slot is occupied or not
     uint8_t queue_inh: 1; // Inhibit queue updates due to tk_timer updates
-    uint8_t unused: 6;
+    uint8_t asleep: 1; // Whether we are currently sleeping
+    uint8_t unused: 5;
   } data;
   uint8_t next;      // Next task to run; If 0xFF: End of chain
   uint8_t prev;      // Previous task in the chain; If 0xFF: Start of chain
-  uint16_t tk_sleep; // Tick to wake up; If 0xFFFF: Inactive
+  uint16_t tk_queue; // Tick to wake up; If 0xFFFF: Inactive
   void (*task)();    // Task cb function to run
 } csch_proc_t;
 
@@ -38,15 +39,19 @@ typedef struct {
   uint8_t ms_tk; // Convert from MS to TK
   uint16_t tk_timer; // Time since last tick rebase
   uint32_t ms_last; // Previous tick
+
+  uint32_t (*curr_time)(); // Used to get the current time (in ms) since the process began
 } csch_t;
 
 /**
  * @param csch  The scheduler to initialize
  * @param buf   The buffer to hold the initialized tasks
  * @param ms_tk The number of ms in a single tick (recommended: 1)
+ * @param curr_time The callback function to get the current time (# ms elapsed since process started running)
+ * @param buf   The buffer to hold all registered tasks in
  * @param cap   The size of the buffer
  */
-void csch_create(csch_t* csch, uint8_t ms_tk, csch_proc_t* buf, uint8_t cap);
+void csch_create(csch_t* csch, uint8_t ms_tk, void (*curr_time)(), csch_proc_t* buf, uint8_t cap);
 
 /**
  * @param csch  The scheduler to modify
@@ -65,23 +70,43 @@ bool csch_task_kill(csch_t* csch, uint8_t pid);
 /**
  * Run all available tasks
  * @param csch  The scheduler to run
- * @param ms    The current time
+ * @returns     The number of ticks that were run this tick
  */
-void csch_tick(csch_t* csch, uint32_t ms);
+uint16_t csch_tick(csch_t* csch);
 
 /**
- * Tell a process to sleep for some amount of ticks
- . Note: Minimum sleep time is 1tk to prevent infinite blocking loops
+ * Run the current scheduler on all queued tasks, excluding this one
+ * Place this within a blocking loop to allow all other tasks to continue running during the block
+ * Note: This is a form of sleeping. While running, this task is considered "asleep". As only one task can sleep at any given time, this function will only succeed if no other task is currently sleeping
+ * @returns `true` if the current task could be found and no other task is sleeping
+ */
+bool csch_ctick();
+
+/**
+ * Queue a task to run again in some number of ticks. This does _not_ affect the current tick's iteration time
+ * Note: Minimum queue time is 1tk to prevent infinite blocking loops
+ * Note: Later queues override the current queue time
  * @param csch  The scheduler whose tasks will be modified
- * @param pid   The process to put to sleep
- * @param ticks The length of time to sleep the task for
+ * @param pid   The process to queue for later execution
+ * @param ticks The duration of time to wait before running the task again
  * @returns `true` if the task could be found and put to sleep; False otherwise
  */
-bool csch_sleep(csch_t* csch, uint8_t pid, uint16_t ticks);
+bool csch_queue(csch_t* csch, uint8_t pid, uint16_t ticks);
 
 /**
- * Put the current running process to sleep. Note: Minimum sleep time is 1tk to prevent infinite blocking loops
- * @param ticks The length of time to sleep the task for
+ * Queue the current task to run again in some number of ticks. This does _not_ affect the current tick's iteration time
+ * Note: Minimum queue time is 1tk to prevent infinite blocking loops
+ * Note: Later queues override the current queue time
+ * @param ticks The duration of time to wait before running this task again
+ * @returns `true` if the task could be found and queued; False otherwise
+ */
+bool csch_cqueue(uint16_t ticks);
+
+/**
+ * Pause the current task for (at least) some number of ticks. This _does_ affect the current tick's iteration time
+ * Works by internally calling `csch_tick` to prevent blocking other tasks
+ * Note: As this is a cooperative multitasking system without a concept of context switching, only one task may ever be sleeping at any given time
+ * @param ticks The number of ticks the process for
  * @returns `true` if the task could be found and put to sleep; False otherwise
  */
 bool csch_csleep(uint16_t ticks);
