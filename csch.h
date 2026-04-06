@@ -40,18 +40,17 @@ typedef struct {
   uint16_t tk_timer; // Time since last tick rebase
   uint32_t ms_last; // Previous tick
 
-  uint32_t (*curr_time)(); // Used to get the current time (in ms) since the process began
+  unsigned long (*curr_time)(); // Used to get the current time (in ms) since the process began
 } csch_t;
 
 /**
- * @param csch  The scheduler to initialize
  * @param buf   The buffer to hold the initialized tasks
  * @param ms_tk The number of ms in a single tick (recommended: 1)
  * @param curr_time The callback function to get the current time (# ms elapsed since process started running)
  * @param buf   The buffer to hold all registered tasks in
  * @param cap   The size of the buffer
  */
-void csch_create(csch_t* csch, uint8_t ms_tk, void (*curr_time)(), csch_proc_t* buf, uint8_t cap);
+csch_t csch_create(uint8_t ms_tk, unsigned long (*curr_time)(), csch_proc_t* buf, uint8_t cap);
 
 /**
  * @param csch  The scheduler to modify

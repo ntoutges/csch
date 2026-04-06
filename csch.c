@@ -9,22 +9,25 @@ void _csch_rebase(csch_t* csch); // Rebase all task `tk_queue` timers s.t. (csch
 csch_t* _csch_active_scheduler = nullptr;
 uint8_t _csch_active_pid = 0xFF;
 
-void csch_create(csch_t* csch, uint8_t ms_tk, void (*curr_time)(), csch_proc_t* buf, uint8_t cap) {
+csch_t csch_create(uint8_t ms_tk, unsigned long (*curr_time)(), csch_proc_t* buf, uint8_t cap) {
+  csch_t csch;
 
   // Initialize csch
-  csch->proc_buf = buf;
-  csch->proc_cap = cap;
-  csch->proc_start = 0xFF;
-  csch->tk_timer = 0;
-  csch->ms_tk = ms_tk;
-  csch->ms_acc = 0; // Run initial tick immediately
-  csch->ms_last = 0;
-  csch->curr_time = curr_time;
+  csch.proc_buf = buf;
+  csch.proc_cap = cap;
+  csch.proc_start = 0xFF;
+  csch.tk_timer = 0;
+  csch.ms_tk = ms_tk;
+  csch.ms_acc = 0; // Run initial tick immediately
+  csch.ms_last = 0;
+  csch.curr_time = curr_time;
 
   // Initialize buf
   for (uint8_t i = 0; i < cap; i++) {
     buf[i].data.occupied = 0;
   }
+
+  return csch;
 }
 
 uint8_t csch_task_fork(csch_t* csch, void (*task)()) {
@@ -76,7 +79,7 @@ bool csch_task_kill(csch_t* csch, uint8_t pid) {
 }
 
 uint16_t csch_tick(csch_t* csch) {
-  uint32_t ms = csch->curr_time();
+  unsigned long ms = csch->curr_time();
 
   uint16_t delta = ms - csch->ms_last;
   uint16_t d_tk = delta / csch->ms_tk;
