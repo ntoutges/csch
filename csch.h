@@ -43,6 +43,12 @@ typedef struct {
   unsigned long (*curr_time)(); // Used to get the current time (in ms) since the process began
 } csch_t;
 
+// Hold a scheduler and the PID of its active process
+typedef struct {
+    uint8_t pid;
+    csch_t* csch;
+} csch_curr_t;
+
 /**
  * @param buf   The buffer to hold the initialized tasks
  * @param ms_tk The number of ms in a single tick (recommended: 1)
@@ -123,6 +129,13 @@ bool csch_hibernate(csch_t* csch, uint8_t pid);
  * @returns `true` if the task could be found and hiberated; False otherwise
  */
 bool csch_chibernate();
+
+/**
+ * Get the current scheduler and process information
+ * @return A struct containing the current scheduler and process information.
+ * If no scheduler/process is currently running, the `csch` field will be `nullptr` and the `pid` field will be `0xFF`
+ */
+csch_curr_t csch_ctask();
 
 /**
  * Convert some `ms` to ticks under the given `csch`'s tick setting

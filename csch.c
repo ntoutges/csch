@@ -213,12 +213,34 @@ bool csch_csleep(uint16_t ticks) {
 bool csch_hibernate(csch_t* csch, uint8_t pid) {
   if (!_csch_valid(csch, pid)) return false; // Ensure process is valid + active
 
+  csch_proc_t* p = &(csch->proc_buf[pid]);
+
   // Mark as hibernated
-  csch->proc_buf[pid].tk_queue = 0xFFFF;
+  p->tk_queue = 0xFFFF;
+
+  // Update location in task queue, if required
+  if (!p->data.queue_inh)
+    _csch_task_qupdate(csch, pid);
+
+  return true;
 }
 
 bool csch_chibernate() {
   return csch_hibernate(_csch_active_scheduler, _csch_active_pid);
+}
+
+csch_curr_t csch_ctask() {
+    if (!_csch_valid(_csch_active_scheduler, _csch_active_pid)) {
+        return (csch_curr_t) {
+            .pid = 0xFF,
+            .csch = nullptr
+        };
+    }
+
+    return (csch_curr_t) {
+        .pid = _csch_active_pid,
+        .csch = _csch_active_scheduler
+    };
 }
 
 uint16_t csch_ms_to_ticks(csch_t* csch, uint16_t ms) {
