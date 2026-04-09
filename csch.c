@@ -319,7 +319,6 @@ uint8_t _csch_task_qnext(csch_t* csch) {
 
 void _csch_rebase(csch_t* csch) {
   // Subtract `csch->tk_timer` from all sleep timers
-  // Assumes all tk_queue >= tk_timer;
 
   for (uint8_t i = 0; i < csch->proc_cap; i++) {
     csch_proc_t* proc = &(csch->proc_buf[i]);
@@ -330,7 +329,12 @@ void _csch_rebase(csch_t* csch) {
       continue; 
     }
 
-    proc->tk_queue -= csch->tk_timer;
+    // csch took some time to execute the previous tick
+    // Ensure that we don't ever underflow timers, which
+    // would cause the entire task list to be in the wrong order
+    if (proc->tk_queue < csch->tk_timer)
+      proc->tk_queue = 0;
+    else proc->tk_queue -= csch->tk_timer;
   }
 
   csch->tk_timer = 0;
