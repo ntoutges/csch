@@ -1,7 +1,7 @@
-#include "csch.h"
+#include <csch.h>
 
 csch_t sched; // Global var to hold scheduler state
-csch_proc_t sched_buf[4]; // Initialize scheduler task buffer to hold up-to 4 tasks
+csch_proc_t sched_buf[4]; // Initialize scheduler task buffer to hold up to 4 tasks
 
 // Declare task functions
 void task1();
@@ -11,7 +11,7 @@ void task3();
 void setup() {
   Serial.begin(115200);
 
-  csch_create(&sched, 10, millis, sched_buf, sizeof(sched_buf) / sizeof(*sched_buf));
+  sched = csch_create(10, millis, sched_buf, sizeof(sched_buf) / sizeof(*sched_buf));
   
   // Initialize all tasks
   csch_task_fork(&sched, task1);
