@@ -281,6 +281,7 @@ void _csch_task_qupdate(csch_t* csch, uint8_t pid) {
   while (
     curr != 0xFF && (
       timer >= buf[curr].tk_queue ||
+      buf[curr].data.queue_inh ||
       buf[curr].data.asleep
     )
   ) {
